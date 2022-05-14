@@ -3,7 +3,6 @@ import { multiply, divide, round } from 'mathjs';
 import { set } from 'lodash';
 
 export async function convert(amount: any, fromCcy: any, toCcy: any, date: any) {
-    console.log('converting', amount, fromCcy, toCcy, date);
     const pair1 = { from: '', to: '', invert: false };
     const pair2 = { from: '', to: '', invert: false, used: false };
     let rate1;
@@ -34,7 +33,6 @@ export async function convert(amount: any, fromCcy: any, toCcy: any, date: any) 
             docs = [...docs, { ...doc.data() }];
         });
         rate1 = docs.length ? docs[0].rate : 1;
-        console.log('rate1', rate1);
     } catch (e) {
         console.error('Error rate 1', e);
     }
@@ -62,7 +60,6 @@ export async function convertIntoListOfCurrencies(amount: string, fromCcy: strin
     const res = {};
     for (let index = 0; index < listOfCurrencies.length; index++) {
         const converted = await convert(amount, fromCcy, listOfCurrencies[index], date);
-        console.log('converted', converted);
         set(res, `${listOfCurrencies[index]}`, converted);
     }
     return res;

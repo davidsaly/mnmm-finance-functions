@@ -4,8 +4,8 @@ import axios from "axios";
 import * as _ from "lodash";
 import { firestore } from "firebase-admin";
 import { addDays, formatISO, parseISO } from "date-fns";
-// const createSeries = require('./createSeries')
-import { onValueUpdate } from './onValueUpdate';
+import { onValueCreate } from './onValueUpdate';
+import { onTransactionCreate } from './onTransactionUpdate';
 
 // // Start writing Firebase Functions
 // // https://firebase.google.com/docs/functions/typescript
@@ -28,7 +28,8 @@ const createDatesArray = (fromDate: any, toDate: any) => {
     return dates;
 }
 
-export const onValue = onValueUpdate;
+export const onValueCreateFunction = onValueCreate;
+export const onTransactionCreateFunction = onTransactionCreate;
 
 exports.createExchangeRates = functions.https.onRequest(async (req, res) => {
     const base = req.query.base;
