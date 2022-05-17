@@ -54,12 +54,14 @@ export async function impactCashByTransaction(previousSeries: any, transaction: 
         const impact = get(txAmount, ccy);
         const val = round(add(get(newAmount, ccy), impact), 2).toString();
         set(newAmount, ccy, val.toString());
-        if (isNegative(impact)) {
-            const val = round(add(get(newSpending, ccy), impact), 2).toString();
-            set(newSpending, ccy, val.toString());
-        } else {
-            const val = round(add(get(newIncome, ccy), impact), 2).toString();
-            set(newIncome, ccy, val.toString());
+        if (transaction.type !== 'Transfer') {
+            if (isNegative(impact)) {
+                const val = round(add(get(newSpending, ccy), impact), 2).toString();
+                set(newSpending, ccy, val.toString());
+            } else {
+                const val = round(add(get(newIncome, ccy), impact), 2).toString();
+                set(newIncome, ccy, val.toString());
+            }
         }
     })
     const res: CashSeriesType = {

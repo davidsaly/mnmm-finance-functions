@@ -38,7 +38,7 @@ exports.createExchangeRates = functions.https.onRequest(async (req, res) => {
     const requestURL = `https://api.exchangerate.host/timeseries?start_date=${fromDate}&end_date=${toDate}&base=${base}`;
     let data: any;
     const datesArray: any[] = createDatesArray(fromDate, toDate);
-    console.log('datesArray', datesArray);
+    functions.logger.info("datesArray - logger", datesArray, { structuredData: true });
     try {
         ({ data } = await axios.get(requestURL));
     } catch (error) {
