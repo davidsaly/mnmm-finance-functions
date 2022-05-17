@@ -101,8 +101,6 @@ export async function impactInvestmentByValue(previousPerf: any, previousSeries:
 }
 
 export async function impactInvestmentByTransaction(previousSeries: any, transaction: TransactionType | ValueType, listOfCurrencies: string[], initial: boolean) {
-    console.log('previousSeries', previousSeries);
-    console.log('transaction', transaction);
     // amount
     const txAmount = await convertIntoListOfCurrencies(transaction.amount, transaction.currency, listOfCurrencies, transaction.date);
     // income and spending
@@ -138,7 +136,6 @@ export async function impactInvestmentByTransaction(previousSeries: any, transac
         performance: newPerformance,
         // transactionRef: 'ref', TODO
     };
-    console.log('tx.res', res);
     return res;
 }
 
@@ -166,7 +163,6 @@ const calculatePerformance = (previousPerfDate: any, previousSeries: any, thisSe
         const index = multiply(Performance_1, add(1, performance));
         res[ccy] = round(index, 3).toString();
     });
-    console.log('performance: ', res);
     return res;
 }
 
@@ -257,7 +253,7 @@ export const createAccountsAggregation = async (userId: string, portfolioId: str
         }
     }
     let aggregate: InvestmentSeriesType | CashSeriesType;
-    if (pfType = 'performing') {
+    if (pfType === 'performing') {
         aggregate = aggregateInvestmentSeries(date, series, listOfCurrencies);
     } else {
         aggregate = aggregateCashSeries(date, series, listOfCurrencies);

@@ -145,7 +145,6 @@ export const findPortfolioSeriesBetweenDates = async ({ userId, pfId, createdFro
             .orderBy('created', 'desc')
         const series = await prevSeriesRef.get()
         res = series.docs;
-        console.log('transaction portfolio series between', res);
     } catch (e) {
         console.log('error loading previous series', e);
     }
