@@ -1,5 +1,6 @@
 import { InvestmentSeriesType, CashSeriesType } from "../types";
 import { set, cloneDeep } from 'lodash';
+import { firestore } from "firebase-admin";
 
 export const initialInvestmentSeries = (listOfCurrencies: string[], date: string, dateCreated: string, createdFrom: string, amount?: any) => {
     const zeros = {};
@@ -40,4 +41,14 @@ export const initialCashSeries = (listOfCurrencies: string[], date: string, date
         created: dateCreated,
     }
     return zeroSeries
+}
+
+export const updateJob = async (userId: string, running: boolean) => {
+    const jobRef = firestore().collection('users').doc(userId).collection('jobs').doc('seriescalc');
+    try {
+        await jobRef.set({ running });
+        console.log('updated job', jobRef)
+    } catch (e) {
+        console.log('error updating job', e);
+    }
 }

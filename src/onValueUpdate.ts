@@ -13,6 +13,7 @@ import {
 } from "./utils/dataCalls";
 import { treatPortfolioCash } from "./onTransactionUpdate";
 import { initialCashSeries, initialInvestmentSeries } from "./utils/utils";
+import { updateJob } from "./utils/utils";
 
 export const onValueCreate = functions.firestore
     .document('users/{userId}/portfolios/{portfolioId}/accounts/{accountId}/values/{valueId}')
@@ -34,9 +35,12 @@ export const onValueCreate = functions.firestore
             },
         }
         const userCurrency = await getUserCurrency(data.params.userId);
+        await updateJob(data.params.userId, true);
         const { isInitialValuePerforming } = await treatAccount(data.params.portfolioId, data, userCurrency);
         await treatPortfolioCash(data.params.portfolioId, data, userCurrency);
         await treatPortfolioInvestment(data.params.portfolioId, data, userCurrency, isInitialValuePerforming);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await updateJob(data.params.userId, false);
         return 'done';
     });
 /*{
@@ -142,14 +146,8 @@ const treatAccount = async (pfType: string, data: ValueDataType, userCurrency: s
             isInitialValuePerforming = true;
         }
         try {
-            const newSeriesRef = await firestore()
-                .collection('users')
-                .doc(data.params.userId)
-                .collection('portfolios')
-                .doc(data.params.portfolioId)
-                .collection('accounts')
-                .doc(data.params.accountId)
-                .collection('series')
+            const newSeriesRef = await firestore().collection('users').doc(data.params.userId).collection('portfolios')
+                .doc(data.params.portfolioId).collection('accounts').doc(data.params.accountId).collection('series')
                 .add(newSeries)
             console.log('Created series', newSeriesRef.id)
         } catch (e) {
@@ -221,12 +219,8 @@ const treatPortfolioInvestment = async (pfType: string, data: ValueDataType, use
             newSeries = await impactInvestmentByTransaction(zeroSeries, data.after, listOfCurrencies, true);
         }
         try {
-            const newSeriesRef = await firestore()
-                .collection('users')
-                .doc(data.params.userId)
-                .collection('portfolios')
-                .doc(data.params.portfolioId)
-                .collection('series')
+            const newSeriesRef = await firestore().collection('users').doc(data.params.userId).collection('portfolios')
+                .doc(data.params.portfolioId).collection('series')
                 .add(newSeries)
             console.log('Created Portfolio Investment Series', newSeriesRef.id)
             console.log('Portfolio Investment Series', newSeries);

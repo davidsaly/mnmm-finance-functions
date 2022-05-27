@@ -5,6 +5,7 @@ import { TransactionDataType, CashSeriesType, InvestmentSeriesType, ValueDataTyp
 import { impactCashByTransaction, impactInvestmentByTransaction, createAccountsAggregation } from './utils/calculations';
 import { findPreviousSeries, getUserCurrency, findPreviousPortfolioSeries } from "./utils/dataCalls";
 import { initialCashSeries, initialInvestmentSeries } from "./utils/utils";
+import { updateJob } from "./utils/utils";
 
 export const onTransactionCreate = functions.firestore
     .document('users/{userId}/portfolios/{portfolioId}/accounts/{accountId}/transactions/{transactionId}')
@@ -27,9 +28,12 @@ export const onTransactionCreate = functions.firestore
             },
         }
         const userCurrency = await getUserCurrency(data.params.userId);
+        await updateJob(data.params.userId, true);
         await treatAccount(data.params.portfolioId, data, userCurrency);
         await treatPortfolioCash(data.params.portfolioId, data, userCurrency);
         await treatPortfolioInvestment(data.params.portfolioId, data, userCurrency);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await updateJob(data.params.userId, false);
         return 'done';
     });
 /*{
@@ -50,6 +54,7 @@ export const onTransactionCreate = functions.firestore
     2. calculate value and other metrics
     3. Save series
 }*/
+
 const treatAccount = async (pfType: string, data: TransactionDataType, userCurrency: string) => {
     console.log('Transaction updated: treating account');
     const listOfCurrencies = uniq(['EUR', 'USD', userCurrency, data.after.currency]);
