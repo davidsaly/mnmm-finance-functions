@@ -1,21 +1,31 @@
 import * as functions from "firebase-functions";
 import { firestore } from "firebase-admin";
 import { convertIntoListOfCurrencies } from './utils/convert';
-import { uniq, set } from 'lodash'
-import { DataType, CashSeriesType } from './types';
-import { impactCashByValue } from './utils/calculations';
+import { uniq } from 'lodash'
+import { ValueDataType, CashSeriesType, InvestmentSeriesType } from './types';
+import { impactCashByValue, impactInvestmentByValue, impactInvestmentByTransaction, createAccountsAggregation } from './utils/calculations';
+import {
+    findPreviousSeries, getUserCurrency,
+    findPreviousSeriesByCreatedFrom, findSeriesBetweenDates,
+    findPreviousPortfolioSeriesByCreatedFrom,
+    findPreviousPortfolioSeries,
+    findPortfolioSeriesBetweenDates,
+} from "./utils/dataCalls";
+import { treatPortfolioCash } from "./onTransactionUpdate";
+import { initialCashSeries, initialInvestmentSeries } from "./utils/utils";
+import { updateJob } from "./utils/utils";
 
-export const onValueUpdate = functions.firestore
+export const onValueCreate = functions.firestore
     .document('users/{userId}/portfolios/{portfolioId}/accounts/{accountId}/values/{valueId}')
-    .onWrite(async (change, context) => {
-        const after = change.after.data();
-        const data: DataType = {
+    .onCreate(async (snapshot, context) => {
+        const after = snapshot.data();
+        const data: ValueDataType = {
             after: {
                 date: after?.date,
                 amount: after?.amount,
                 created: after?.created,
                 currency: after?.currency,
-                createdFrom: after?.createdFrom,
+                // createdFrom: after?.createdFrom,
             },
             params: {
                 userId: context.params.userId,
@@ -24,7 +34,13 @@ export const onValueUpdate = functions.firestore
                 valueId: context.params.valueId,
             },
         }
-        await treatAccount(data.params.portfolioId, data);
+        const userCurrency = await getUserCurrency(data.params.userId);
+        await updateJob(data.params.userId, true);
+        const { isInitialValuePerforming } = await treatAccount(data.params.portfolioId, data, userCurrency);
+        await treatPortfolioCash(data.params.portfolioId, data, userCurrency);
+        await treatPortfolioInvestment(data.params.portfolioId, data, userCurrency, isInitialValuePerforming);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await updateJob(data.params.userId, false);
         return 'done';
     });
 /*{
@@ -34,22 +50,23 @@ export const onValueUpdate = functions.firestore
     2. if does not exist - initialize with value and metrics 0
     3. if value != previous value -> increase Income or Increase spending by the difference
     4. Save series
-    conditional: if there are series after
-    5. delete all the series after
-    6. load values and transactions after and recalculate series
-    7. save future series
     
     performing
 
     1. Load the Series on the day of previous Value
-    2. find transactions that come after that series
-    3. calculate value and other metrics
+    2. If does not exist: initialize with value, metrics = 0, performance=100
+    3. if exists: calculate metrics
     4. Save series
+
+    conditional for both: if there are series after
+    5. delete all the series after
+    6. load values and transactions after and recalculate series
+    7. save future series
 }*/
-const treatAccount = async (pfType: string, data: DataType) => {
-    console.log('treating account');
-    const userCurrency = await getUserCurrency(data.params.userId);
+const treatAccount = async (pfType: string, data: ValueDataType, userCurrency: string) => {
+    console.log('Value updated: treating account');
     const listOfCurrencies = uniq(['EUR', 'USD', userCurrency, data.after.currency]);
+    let isInitialValuePerforming = false;
 
     // nonperforming
     if (pfType === 'nonperforming') {
@@ -57,92 +74,158 @@ const treatAccount = async (pfType: string, data: DataType) => {
             date: data.after.date,
             userId: data.params.userId,
             pfId: data.params.portfolioId,
-            accountId: data.params.accountId
+            accountId: data.params.accountId,
+            dateEquality: '<=',
         });
+        let newSeries: CashSeriesType;
         if (previousSeries?.length) {
-            const newSeries = await impactCashByValue(previousSeries[0].data(), data.after, listOfCurrencies);
-            try {
-                const newSeriesRef = await firestore()
-                    .collection('users')
-                    .doc(data.params.userId)
-                    .collection('portfolios')
-                    .doc(data.params.portfolioId)
-                    .collection('accounts')
-                    .doc(data.params.accountId)
-                    .collection('series')
-                    .add(newSeries)
-                console.log('Saved new series', newSeriesRef.id)
-            } catch (e) {
-                console.log('error saving new series', e)
-            }
+            newSeries = await impactCashByValue(previousSeries[0].data(), data.after, listOfCurrencies);
         } else {
             // initialize first series
             console.log('no previous series found, initializing...')
             const amount = await convertIntoListOfCurrencies(data.after.amount, data.after.currency, listOfCurrencies, data.after.date);
-            const zeros = {};
-            listOfCurrencies.forEach(ccy => {
-                set(zeros, `${ccy}`, '0');
-            })
-            const newSeries: CashSeriesType = {
-                date: data.after.date,
-                amount,
-                income: zeros,
-                spending: zeros,
-                createdFrom: 'value'
-            }
-            try {
-                const newSeriesRef = await firestore()
-                    .collection('users')
-                    .doc(data.params.userId)
-                    .collection('portfolios')
-                    .doc(data.params.portfolioId)
-                    .collection('accounts')
-                    .doc(data.params.accountId)
-                    .collection('series')
-                    .add(newSeries)
-                console.log('Initialized first series', newSeriesRef.id)
-            } catch (e) {
-                console.log('error saving first series', e)
-            }
+            newSeries = initialCashSeries(listOfCurrencies, data.after.date, data.after.created, 'value', amount);
+        }
+        try {
+            const newSeriesRef = await firestore()
+                .collection('users')
+                .doc(data.params.userId)
+                .collection('portfolios')
+                .doc(data.params.portfolioId)
+                .collection('accounts')
+                .doc(data.params.accountId)
+                .collection('series')
+                .add(newSeries)
+            console.log('Created series', newSeriesRef.id)
+        } catch (e) {
+            console.log('Error saving series', e)
+        }
+        // performing
+    } else if (pfType === 'performing') {
+        // find previous series created from value or initial series created from transaction
+        const previousSeries = await findPreviousSeriesByCreatedFrom({
+            date: data.after.date,
+            userId: data.params.userId,
+            pfId: data.params.portfolioId,
+            accountId: data.params.accountId,
+            createdFrom: ['initial', 'value'],
+            dateEquality: '<=',
+        });
+        const previous = await findPreviousSeries({
+            date: data.after.date,
+            userId: data.params.userId,
+            pfId: data.params.portfolioId,
+            accountId: data.params.accountId,
+            dateEquality: '<='
+        });
+        let newSeries: InvestmentSeriesType;
+        if (previousSeries?.length && previous?.length) {
+            // this series is used to get the right date
+            const previousForPerf = previousSeries[0].data();
+            // this is the actual previous
+            const previousActual = previous[0].data();
+            // find all series created from transactions between the series date and new value date
+            const params = {
+                userId: data.params.userId,
+                pfId: data.params.portfolioId,
+                accountId: data.params.accountId,
+                fromDate: previousForPerf.date,
+                toDate: data.after.date,
+                createdFrom: 'transaction',
+                fromDateCreated: previousForPerf.created,
+            };
+            const transactionsBetween = await findSeriesBetweenDates(params);
+            const amount = await convertIntoListOfCurrencies(data.after.amount, data.after.currency, listOfCurrencies, data.after.date);
+            newSeries = await impactInvestmentByValue(previousForPerf, previousActual, transactionsBetween, data.after, listOfCurrencies, amount)
+        } else {
+            // initialize first series
+            console.log('no previous series found, initializing...')
+            const zeroSeries = initialInvestmentSeries(listOfCurrencies, data.after.date, data.after.created, 'initial');
+            // initial value acts like transaction inflow impact
+            newSeries = await impactInvestmentByTransaction(zeroSeries, data.after, listOfCurrencies, true);
+            isInitialValuePerforming = true;
+        }
+        try {
+            const newSeriesRef = await firestore().collection('users').doc(data.params.userId).collection('portfolios')
+                .doc(data.params.portfolioId).collection('accounts').doc(data.params.accountId).collection('series')
+                .add(newSeries)
+            console.log('Created series', newSeriesRef.id)
+        } catch (e) {
+            console.log('Error saving series', e)
         }
     }
+    return { isInitialValuePerforming };
 }
 
-const findPreviousSeries = async ({ date, userId, pfId, accountId }:
-    { date: string, userId: string, pfId: string, accountId: string }) => {
-    let res;
-    try {
-        const prevSeriesRef = firestore()
-            .collection('users')
-            .doc(userId)
-            .collection('portfolios')
-            .doc(pfId)
-            .collection('accounts')
-            .doc(accountId)
-            .collection('series')
-            .where('date', '<=', date)
-            .orderBy('date', 'desc')
-            // .orderBy('created', 'desc') // TODO - enable later - probably needs an index
-            .limit(1)
-        const series = await prevSeriesRef.get()
-        res = series.docs;
-    } catch (e) {
-        console.log('error loading previous series', e);
-    }
-    return res;
-}
+/*
+performing
 
-const getUserCurrency = async (userId: string) => {
-    let currency;
-    const userRef = firestore()
-        .collection('users')
-        .doc(userId)
-    try {
-        const user = await userRef.get();
-        const data = user.data();
-        currency = data?.currency;
-    } catch (e) {
-        console.error('Error fetching user settings', e);
+*/
+const treatPortfolioInvestment = async (pfType: string, data: ValueDataType, userCurrency: string, isInitialValuePerforming: boolean) => {
+    const listOfCurrencies = uniq(['EUR', 'USD', userCurrency]);
+    if (pfType === 'performing') {
+        const previousSeriesInitial = await findPreviousPortfolioSeriesByCreatedFrom({
+            date: data.after.date,
+            userId: data.params.userId,
+            pfId: data.params.portfolioId,
+            createdFrom: ['initial'],
+            dateEquality: '<=',
+        });
+        const previousSeriesValue = await findPreviousPortfolioSeriesByCreatedFrom({
+            date: data.after.date,
+            userId: data.params.userId,
+            pfId: data.params.portfolioId,
+            createdFrom: ['value'],
+            dateEquality: '<',
+        });
+        const previous = await findPreviousPortfolioSeries({
+            date: data.after.date,
+            userId: data.params.userId,
+            pfId: data.params.portfolioId,
+            dateEquality: '<='
+        });
+        const previousSeries = previousSeriesInitial?.length ? previousSeriesInitial : previousSeriesValue;
+        let newSeries: InvestmentSeriesType;
+        if (previousSeries?.length && previous?.length) {
+            // this series is used to get the right date
+            const previousForPerf = previousSeries[0].data();
+            console.log('previousForPerf Portfolio', previousForPerf);
+            // this is the actual previous
+            const previousActual = previous[0].data();
+            // find all series created from transactions between the series date and new value date
+            const params = {
+                userId: data.params.userId,
+                pfId: data.params.portfolioId,
+                accountId: data.params.accountId,
+                fromDate: previousForPerf.date,
+                toDate: data.after.date,
+                createdFrom: 'transaction',
+                fromDateCreated: previousForPerf.created,
+            };
+            console.log('params Portfolio', params);
+            if (isInitialValuePerforming) {
+                newSeries = await impactInvestmentByTransaction(previousActual, data.after, listOfCurrencies, false);
+            } else {
+                console.log('portfolio impact by value')
+                const transactionsBetween = await findPortfolioSeriesBetweenDates(params);
+                const aggregate = await createAccountsAggregation(data.params.userId, data.params.portfolioId, data.after.date, listOfCurrencies, pfType);
+                newSeries = await impactInvestmentByValue(previousForPerf, previousActual, transactionsBetween, aggregate, listOfCurrencies, aggregate.amount)
+            }
+        } else {
+            // initialize first series
+            console.log('no previous series found, initializing...')
+            const zeroSeries = initialInvestmentSeries(listOfCurrencies, data.after.date, data.after.created, 'initial');
+            // initial value acts like transaction inflow impact
+            newSeries = await impactInvestmentByTransaction(zeroSeries, data.after, listOfCurrencies, true);
+        }
+        try {
+            const newSeriesRef = await firestore().collection('users').doc(data.params.userId).collection('portfolios')
+                .doc(data.params.portfolioId).collection('series')
+                .add(newSeries)
+            console.log('Created Portfolio Investment Series', newSeriesRef.id)
+            console.log('Portfolio Investment Series', newSeries);
+        } catch (e) {
+            console.log('Error saving series', e)
+        }
     }
-    return currency;
 }
