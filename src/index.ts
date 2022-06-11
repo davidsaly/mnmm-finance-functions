@@ -4,8 +4,8 @@ import axios from "axios";
 import * as _ from "lodash";
 import { firestore } from "firebase-admin";
 import { addDays, formatISO, parseISO } from "date-fns";
-import { onValueCreate } from './onValueUpdate';
-import { onTransactionCreate } from './onTransactionUpdate';
+import { onValueCreate } from './onValueCreate';
+import { onTransactionCreate } from './onTransactionCreate';
 
 // // Start writing Firebase Functions
 // // https://firebase.google.com/docs/functions/typescript
