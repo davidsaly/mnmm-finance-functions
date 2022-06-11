@@ -1,4 +1,6 @@
 import { firestore } from "firebase-admin";
+import { get } from 'lodash';
+// import { addDays, formatISO } from "date-fns";
 
 export const findPreviousSeries = async ({ date, userId, pfId, accountId, dateEquality }:
     { date: string, userId: string, pfId: string, accountId: string, dateEquality: any }) => {
@@ -148,6 +150,63 @@ export const findPortfolioSeriesBetweenDates = async ({ userId, pfId, createdFro
     } catch (e) {
         console.log('error loading previous series', e);
     }
+    return res;
+}
+
+export const findPortfolioSeriesAfterSeries = async ({ series }:
+    {
+        series: any
+    }) => {
+    const res = [];
+    let go = series.nextRef === 'na' ? false : true;
+    let d = series;
+    while (go) {
+        const next: any = await firestore().doc(d.nextRef.path).get();
+        d = next.data();
+        res.push({ data: d, ref: next.ref})
+        if (d.nextRef === 'na') {
+            go = false;
+        }
+    }
+    return res;
+}
+
+export const findRecordsLinkedToSeries = async (series: any[]) => {
+    const res = [];
+    for (let index = 0; index < series.length; index++) {
+        const record = await firestore().doc(series[index].data.createdFromRef.path).get();
+        if (record) {
+            res.push({ data: record.data(), type: get(series, `${[index]}.data.createdFrom`), ref: record.ref, account: record.ref.parent.parent?.id });
+        }
+    }
+    return res;
+}
+
+export const findPortfolioSeriesByCreatedFrom = async (createdFromRef: any, userId: string, pfId: string) => {
+    const series: any = await firestore()
+        .collection('users')
+        .doc(userId)
+        .collection('portfolios')
+        .doc(pfId)
+        .collection('series')
+        .where('createdFromRef', '==', createdFromRef)
+        .get();
+    const res = series.docs
+    return res;
+}
+
+export const findAccountSeriesByCreatedFrom = async (createdFromRef: any, userId: string, pfId: string, accountId: string) => {
+    const series: any = await firestore()
+        .collection('users')
+        .doc(userId)
+        .collection('portfolios')
+        .doc(pfId)
+        .collection('accounts')
+        .doc(accountId)
+        .collection('series')
+        .where('createdFromRef', '==', createdFromRef)
+        .get();
+    const res = series.docs
     return res;
 }
 

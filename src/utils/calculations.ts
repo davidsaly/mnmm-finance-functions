@@ -5,6 +5,7 @@ import { subtract, isNegative, isPositive, add, round, divide, multiply, sum } f
 import { differenceInCalendarDays, formatISO, parseISO } from 'date-fns'
 import { findPreviousSeries, getAccountsForPortfolio } from "./dataCalls";
 import { initialInvestmentSeries } from "./utils";
+import * as admin from 'firebase-admin';
 
 // const addMultiAmounts = (multiAmount1, multiAMount2) => {
 
@@ -37,7 +38,7 @@ export async function impactCashByValue(previousSeries: any, value: ValueType, l
         spending: newSpending,
         date: value.date,
         createdFrom: 'value',
-        created: value.created,
+        created: admin.firestore.FieldValue.serverTimestamp(),
         // valueRef: 'ref', TODO
     };
     return res;
@@ -70,7 +71,7 @@ export async function impactCashByTransaction(previousSeries: any, transaction: 
         spending: newSpending,
         date: transaction.date,
         createdFrom: initial ? 'initial' : 'transaction',
-        created: transaction.created,
+        created: admin.firestore.FieldValue.serverTimestamp(),
         // transactionRef: 'ref', TODO
     };
     return res;
@@ -93,7 +94,7 @@ export async function impactInvestmentByValue(previousPerf: any, previousSeries:
         },
         date: value.date,
         createdFrom: 'value',
-        created: value.created,
+        created: admin.firestore.FieldValue.serverTimestamp(),
         // valueRef: 'ref', TODO
     };
     let newPerformance: any;
@@ -134,7 +135,7 @@ export async function impactInvestmentByTransaction(previousSeries: any, transac
         outflows: newOutflows,
         date: transaction.date,
         createdFrom: initial ? 'initial' : 'transaction',
-        created: transaction.created,
+        created: admin.firestore.FieldValue.serverTimestamp(),
         performance: newPerformance,
         // transactionRef: 'ref', TODO
     };
@@ -202,7 +203,7 @@ export const aggregateCashSeries = (date: string, accountSeries: CashSeriesType[
         amount: cloneDeep(zeros),
         income: cloneDeep(zeros),
         spending: cloneDeep(zeros),
-        created: formatISO(new Date(), { format: 'basic' }),
+        created: admin.firestore.FieldValue.serverTimestamp(),
     }
     accountSeries.forEach(acc => {
         listOfCurrencies.forEach(ccy => {

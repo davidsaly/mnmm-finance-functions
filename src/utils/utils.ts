@@ -47,7 +47,7 @@ export const updateJob = async (userId: string, running: boolean) => {
     const jobRef = firestore().collection('users').doc(userId).collection('jobs').doc('seriescalc');
     try {
         await jobRef.set({ running });
-        console.log('updated job', jobRef)
+        console.log('updated job', jobRef.id)
     } catch (e) {
         console.log('error updating job', e);
     }

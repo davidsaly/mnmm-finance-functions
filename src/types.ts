@@ -6,20 +6,29 @@ export interface AmountType {
 export interface ValueType {
     date: string,
     amount: string,
-    created: string,
+    created: any,
     currency: string,
+    previousRef?: string,
+    nextRef?: string,
+    ordering?: string,
+    orderingRef?: string,
 }
 
 export interface TransactionType {
     date: string,
     amount: string,
-    created: string,
+    created: any,
     currency: string,
     flow: string,
     type: string,
+    previousRef?: string,
+    nextRef?: string,
+    ordering?: string,
+    orderingRef?: string,
 }
 
 export interface ValueDataType {
+    type: 'ValueDataType'
     after: ValueType,
     params: {
         userId: string,
@@ -30,6 +39,7 @@ export interface ValueDataType {
 }
 
 export interface TransactionDataType {
+    type: 'TransactionDataType',
     after: TransactionType,
     params: {
         userId: string,
@@ -44,7 +54,10 @@ export interface CashSeriesType {
     spending: {},
     amount: {},
     createdFrom?: string,
-    created: string,
+    createdFromRef?: string,
+    created: any,
+    nextRef?: string,
+    previousRef?: string,
 }
 export interface InvestmentSeriesType {
     date: string,
@@ -61,5 +74,8 @@ export interface InvestmentSeriesType {
     amount: {},
     performance?: {},
     createdFrom?: string,
-    created: string,
+    createdFromRef?: string,
+    created: any,
+    nextRef?: string,
+    previousRef?: string,
 }
